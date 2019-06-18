@@ -2,14 +2,37 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const bcrypt = require('bcryptjs')
+const session = require('express-session');
+const knexSessionStore = require('connect-session-knex')(session);
 
 const Users = require('../users/users-model.js');
 
 const server = express();
 
+const sessionConfig = {
+  name: 'Professor Shinonome',
+  secret: 'Nano nano nano nano nano nano nano nano nano nano nano nano!',
+  cookie: {
+    maxAge: 1000 * 60 * 60,
+    secure: false,
+    httpOnly: true,
+  },
+  resave: false,
+  saveUninitialized: true,
+  store: new knexSessionStore({
+    knex: require('../data/dbConfig.js'),
+    tableName: 'sessions',
+    sidfieldname: 'sid',
+    createTable: true,
+    clearInterval: 1000 * 60 * 60,
+  })
+}
+
+const restricted = require('./restricted-middleware.js')
 const studentRouter = require('./routes/students/student-router.js');
 const teacherRouter = require('./routes/teachers/teacher-router.js');
 
+server.use(session(sessionConfig));
 server.use(helmet());
 server.use(express.json());
 server.use(cors());
@@ -43,6 +66,7 @@ server.post('/api/login', (req, res) => {
     .first()
     .then(user => {
         if (user && bcrypt.compareSync(password, user.password)) {
+            req.session.user = user;
             res.status(200).json({message: `Welcome ${user.username}`})
         } else {
             res.status(401).json({message: "Invalid credentials"});
@@ -61,9 +85,23 @@ server.get('/api/users', restricted, (req, res) => {
     .catch(error => res.send(error))
 })
 
-// Middleware
+server.get('/api/logout', (req, res) => {
+  if (req.session) {
+    req.session.destroy(error => {
+      if(error){
+        res.send('ishiki sezaru wo emasen!')
+      } else {
+        res.send('wake wakannai nai!! ')
+      }
+    })
+  } else {
+    res.end();
+  }
+})
 
-function restricted(req, res, next){ 
+// Middleware for Reference
+
+function restriction(req, res, next){ 
     const {username, password} = req.headers
   
     if (username && password) {
